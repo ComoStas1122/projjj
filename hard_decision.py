@@ -1,47 +1,69 @@
-#!/usr/bin/env python3
-import random_bit_seq_gen
-import numpy as np
+#!/usr/bin/env sage -python
+from sage.all import *
 
 
-def handle_respone(resp):
+def create_random_response(n): return random_vector(GF(2), n) # creating PUF response
+
+def init_mechanism():
     '''
-    This Function handles the received PUF response \\
-            using HARD Decision algorithm
-    :resp: the PUF response
-    :return flag:
-    '''
-    pass
-
-
-def gen_mat(n, k):
-    '''
-    This Function generates a CHECK_MAT, given amount of errors, and resp_len
-    :resp_len: length of the PUF response
-    :err_num: maximum amount of errors in the PUF
-    '''
-    pass
-
-
-def main():
-    '''
-    Main Handler Function
-    :ret: True of ran well, 0 if not
+    Initiating The mechanism
+    :ret: returning tuple containing (PUF, helper_data, H, res)
     '''
 
-    N = ""
-    D = ""
-    while not N.isdigit() and not D.isdigit():
-        N = input("Enter the PUF reponse len: ")
-        D = input("Enter maximum ERRORS possible: ")
-        if N.isdigit() and D.isdigit() and int(N) <= int(D):
-            continue
-    N = int(N)
-    D = int(D)
-    resp = random_bit_seq_gen.bits_seq(n=N)
-    print(f"Generated PUF Response is: {resp}")
-    print(f"Generating a CHECK MATRIX GIVEN PARAMS : N = {N} NUM of errors "
-          f"= {D}")
+    helper_data = []
+    n = int(input("Enter reponse len : "))
+    F = GF(2)**n
+    PUF = channels.QarySymmetricChannel(F, 0.1) # Creating the PUF
+    res = PUF(create_random_response(n)) # PUF response
+    print(f"PUF reponse : {res}")
+    t = int(input("Enter desired error corrections : "))
+    k = n-(t * 2 + 1)
+    while True:
+        code = codes.random_linear_code(GF(2), n, k)
+        decoder = codes.decoders.LinearCodeSyndromeDecoder(code, t)
+        if 'always-succeed' in decoder.decoder_type():
+            break
+        input()
+        print(decoder, decoder.decoder_type())
+    H = code.dual_code()
+    print(f"Generated H => \n{H.generator_matrix()}")
+    helper_data.append(H.generator_matrix() * res)
+    return {"PUF" : PUF, "helper_data" : helper_data, "H" : (H, decoder.syndrome_table()), "response" : res}
+
+
+def print_system(**system):
+    '''
+    Printing The system
+    '''
+
+    print(f"PUF => {system['PUF']}")
+    print(f"Helper-Data => {system['helper_data']}")
+    print(f"H => \n{system['H'][0].generator_matrix()}")
+    
+   
+def gen_res(**system): return system['PUF'](system['response'])
+
+
+def response_processing(res, **system):
+    '''
+    Function that processes the response
+    :ret: True/False
+    '''
+    
+    syndrome = system['H'][0].generator_matrix() * res
+    print(res)
+    print(f"Syndrome = > {syndrome}")
+    for syn in system['H'][1]:
+        xored_syn = syn + syndrome
+        for data in system['helper_data']:
+            if data == xored_syn:
+                return True
+    return False
+    
 
 
 if __name__ == "__main__":
-    main()
+    system = init_mechanism()
+    print_system(**system)
+    res = gen_res(**system)
+    print(response_processing(res, **system))
